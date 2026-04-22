@@ -1,0 +1,9 @@
+# aggressive profile — faster, less stealth
+# Use only on targets where speed matters more than detection avoidance
+name: aggressive
+delay_min_ms: 100
+delay_max_ms: 400
+concurrency: 10
+ua_rotate_every: 5
+jitter: 0.2
+timeout_ms: 3000

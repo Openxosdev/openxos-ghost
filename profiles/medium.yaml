@@ -1,0 +1,8 @@
+# medium profile — balanced stealth and speed
+name: medium
+delay_min_ms: 500
+delay_max_ms: 2000
+concurrency: 3
+ua_rotate_every: 3
+jitter: 0.5
+timeout_ms: 5000

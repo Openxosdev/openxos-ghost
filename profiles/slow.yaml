@@ -1,0 +1,9 @@
+# slow profile — maximum stealth
+# Use for high-security targets or when detection risk is a concern
+name: slow
+delay_min_ms: 3000
+delay_max_ms: 8000
+concurrency: 1
+ua_rotate_every: 1
+jitter: 0.8
+timeout_ms: 10000

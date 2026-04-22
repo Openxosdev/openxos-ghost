@@ -1,0 +1,31 @@
+[package]
+name = "openxos-ghost"
+version = "0.1.0"
+edition = "2021"
+description = "Low-noise, evasion-aware security probe for authorized testing"
+license = "MIT"
+authors = ["Openxos <github.com/Openxosdev>"]
+
+[[bin]]
+name = "ghost"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["rustls-tls", "gzip"], default-features = false }
+anyhow = "1"
+thiserror = "1"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+colored = "2"
+indicatif = "0.17"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
