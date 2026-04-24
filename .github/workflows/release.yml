@@ -1,0 +1,59 @@
+name: Release Binaries
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release-binaries:
+    name: Release Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-gnu,x86_64-apple-darwin,x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Linux Binary
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Build macOS Binary
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Build Windows Binary
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Package Linux
+        run: |
+          tar -czf openxos-ghost-linux-x86_64.tar.gz -C target/x86_64-unknown-linux-gnu/release ghost
+          sha256sum openxos-ghost-linux-x86_64.tar.gz > openxos-ghost-linux-x86_64.tar.gz.sha256
+
+      - name: Package macOS
+        run: |
+          tar -czf openxos-ghost-macos-x86_64.tar.gz -C target/x86_64-apple-darwin/release ghost
+          sha256sum openxos-ghost-macos-x86_64.tar.gz > openxos-ghost-macos-x86_64.tar.gz.sha256
+
+      - name: Package Windows
+        run: |
+          7z a openxos-ghost-windows-x86_64.zip target/x86_64-pc-windows-msvc/release/ghost.exe
+          sha256sum openxos-ghost-windows-x86_64.zip > openxos-ghost-windows-x86_64.zip.sha256
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            openxos-ghost-linux-x86_64.tar.gz
+            openxos-ghost-linux-x86_64.tar.gz.sha256
+            openxos-ghost-macos-x86_64.tar.gz
+            openxos-ghost-macos-x86_64.tar.gz.sha256
+            openxos-ghost-windows-x86_64.zip
+            openxos-ghost-windows-x86_64.zip.sha256
+          token: ${{ secrets.GITHUB_TOKEN }}

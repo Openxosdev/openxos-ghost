@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use colored::Colorize;
+use indicatif::ProgressBar;
 use rand::seq::SliceRandom;
 use std::collections::BTreeSet;
 use std::time::Duration;
@@ -80,14 +81,13 @@ pub async fn run(target: &str, ports_spec: &str, profile: &Profile) -> Result<Sc
     let mut rng = rand::thread_rng();
     ports.shuffle(&mut rng);
 
-    println!(
-        "  {} Scanning {} ports on {} (randomized order, {} profile, concurrency setting {})...",
-        "·".dimmed(),
-        ports.len(),
-        target.yellow(),
-        profile.name,
-        profile.concurrency
+    let total_ports = ports.len();
+    let pb = ProgressBar::new(total_ports as u64);
+    let msg = format!(
+        "Scanning {} ports on {} (randomized order, {} profile, concurrency {})...",
+        total_ports, target, profile.name, profile.concurrency
     );
+    pb.set_message(msg);
 
     let concurrency = profile.concurrency.max(1);
     for batch in ports.chunks(concurrency) {
@@ -160,7 +160,16 @@ pub async fn run(target: &str, ports_spec: &str, profile: &Profile) -> Result<Sc
                 },
             });
         }
+
+        // Update progress bar
+        pb.inc(batch.len() as u64);
     }
+    let finish_msg = format!(
+        "Scan complete: {}/{} ports open",
+        findings.len(),
+        total_ports
+    );
+    pb.finish_with_message(finish_msg);
 
     let completed_at = Utc::now();
 
@@ -168,7 +177,7 @@ pub async fn run(target: &str, ports_spec: &str, profile: &Profile) -> Result<Sc
         "\n  {} Scan complete. {}/{} ports open.",
         ">>".cyan().bold(),
         findings.len().to_string().yellow(),
-        ports.len()
+        total_ports
     );
 
     Ok(ScanResult {
@@ -228,7 +237,8 @@ fn randomized_delay_ms(delay_min_ms: u64, delay_max_ms: u64, jitter_factor: f64)
     let mut r = rand::thread_rng();
     let base = r.gen_range(delay_min_ms..=delay_max_ms);
     let jitter = (base as f64 * jitter_factor * r.gen::<f64>()) as u64;
-    base + jitter
+    // Saturating add to prevent overflow on 32-bit platforms
+    base.saturating_add(jitter)
 }
 
 #[cfg(test)]

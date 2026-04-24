@@ -1,0 +1,10 @@
+# Custom profile for openxos-ghost
+# Save this file and load with: ghost web --target https://example.com --profile /path/to/custom.yaml
+
+name: custom
+delay_min_ms: 500
+delay_max_ms: 2000
+concurrency: 2
+ua_rotate_every: 3
+jitter: 0.6
+timeout_ms: 8000

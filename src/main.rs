@@ -7,6 +7,16 @@ use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
+// Configure colored for Windows/Termux compatibility
+// Use set_override to disable colored output on problematic terminals
+#[cfg(target_os = "windows")]
+fn configure_terminal() {
+    colored::control::set_override(true);
+}
+
+// No-op on Unix-like systems (Linux, macOS, Termux)
+// Windows configuration handled separately via set_override
+
 #[derive(Parser)]
 #[command(
     name = "ghost",
@@ -27,7 +37,7 @@ struct Cli {
     profile: String,
 
     /// Output format: json | markdown | both
-    #[arg(long, global = true, default_value = "json")]
+    #[arg(long, global = true, default_value = "json", value_parser = ["json", "markdown", "md", "both"])]
     format: String,
 
     /// Output file path (default: stdout)
@@ -62,6 +72,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    configure_terminal();
+
     let cli = Cli::parse();
 
     if let Err(err) = validate_authorization(cli.authorized) {
@@ -75,12 +87,12 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Web { target, path } => {
-            println!("{} Web mode → {}", ">>".cyan().bold(), target.yellow());
+            println!("{} Web mode > {}", ">>".cyan().bold(), target.yellow());
             let results = web::probe::run(&target, path.as_deref(), &profile).await?;
             output::render::write(&results, &cli.format, cli.output.as_deref())?;
         }
         Commands::Net { target, ports } => {
-            println!("{} Net mode → {}", ">>".cyan().bold(), target.yellow());
+            println!("{} Net mode > {}", ">>".cyan().bold(), target.yellow());
             let results = net::scan::run(&target, &ports, &profile).await?;
             output::render::write(&results, &cli.format, cli.output.as_deref())?;
         }
@@ -107,7 +119,7 @@ fn print_banner() {
     );
     println!(
         "  {} — authorized targets only\n",
-        "openxos-ghost v0.1.0".bold()
+        "openxos-ghost v0.1.2".bold()
     );
 }
 

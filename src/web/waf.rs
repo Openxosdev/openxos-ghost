@@ -62,6 +62,8 @@ pub async fn detect(response: Response) -> WafDetectionResult {
                 };
             }
         }
+    } else {
+        // Body read failed - continue with header-only detection
     }
 
     WafDetectionResult {

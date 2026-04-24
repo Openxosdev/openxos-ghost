@@ -8,18 +8,24 @@ on:
     branches:
       - main
 
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
 jobs:
   rust-checks:
+    name: Rust Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Rust 1.95.0
+      - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: stable
           components: rustfmt, clippy
 
       - name: Cache cargo registry and build
@@ -28,8 +34,34 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
 
-      - name: Clippy (warnings denied)
-        run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --all-targets --all-features
 
       - name: Test
-        run: cargo test --all-targets
+        run: cargo test --workspace --all-targets --all-features
+
+  windows-build:
+    name: Windows Build
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (Release)
+        run: cargo build --release
+
+      - name: Test
+        run: cargo test --release

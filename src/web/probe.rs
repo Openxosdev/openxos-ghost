@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use colored::Colorize;
+use indicatif::ProgressBar;
 use reqwest::Client;
 use std::time::Duration;
 
@@ -8,7 +9,26 @@ use crate::core::profile::Profile;
 use crate::core::types::{EvasionSummary, Evidence, Finding, ScanMode, ScanResult, Severity};
 use crate::web::{evasion, headers, waf};
 
+/// Validate target URL format
+fn validate_url(url: &str) -> Result<()> {
+    if url.is_empty() {
+        return Err(anyhow!("Target URL is empty"));
+    }
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err(anyhow!(
+            "Target URL must start with 'http://' or 'https://'. Got: '{}'",
+            url
+        ));
+    }
+    url.parse::<url::Url>()
+        .map_err(|e| anyhow!("Invalid URL '{}': {}", url, e))?;
+    Ok(())
+}
+
 pub async fn run(target: &str, path: Option<&str>, profile: &Profile) -> Result<ScanResult> {
+    // Validate URL before making any requests
+    validate_url(target)?;
+
     let started_at = Utc::now();
     let mut findings: Vec<Finding> = Vec::new();
     let mut techniques_succeeded: Vec<String> = Vec::new();
@@ -19,10 +39,10 @@ pub async fn run(target: &str, path: Option<&str>, profile: &Profile) -> Result<
         .danger_accept_invalid_certs(false)
         .build()?;
 
-    let probe_path = normalize_path(path.unwrap_or("/"));
+    let probe_path = normalize_path(path.unwrap_or("/"))?;
     let base_url = format!("{}{}", target.trim_end_matches('/'), probe_path);
 
-    println!("  {} Detecting WAF/security controls...", "·".dimmed());
+    println!("  {} Detecting WAF/security controls...", ".".dimmed());
 
     // Step 1 — baseline request to detect WAF
     let ua = headers::random_ua();
@@ -50,7 +70,7 @@ pub async fn run(target: &str, path: Option<&str>, profile: &Profile) -> Result<
             "!".yellow().bold(),
             waf_result.name.as_deref().unwrap_or("Unknown").yellow()
         );
-        println!("  {} {}", "·".dimmed(), waf_result.evidence);
+        println!("  {} {}", ".".dimmed(), waf_result.evidence);
     } else {
         println!(
             "  {} No WAF detected in baseline (HTTP {}, {})",
@@ -61,10 +81,9 @@ pub async fn run(target: &str, path: Option<&str>, profile: &Profile) -> Result<
     }
 
     // Step 2 — attempt header bypass variants
-    println!(
-        "  {} Testing header-based bypass techniques...",
-        "·".dimmed()
-    );
+    let total_header_variants = evasion::header_bypass_variants().len();
+    let header_pb = ProgressBar::new(total_header_variants as u64);
+    header_pb.set_message("Testing header-based bypass techniques...");
 
     let mut request_count = 0usize;
     let mut current_ua = headers::random_ua();
@@ -72,6 +91,7 @@ pub async fn run(target: &str, path: Option<&str>, profile: &Profile) -> Result<
     for (i, variant_headers) in evasion::header_bypass_variants().iter().enumerate() {
         evasion::delay(profile).await;
         request_count += 1;
+        header_pb.inc(1);
 
         if should_rotate_ua(request_count, profile.ua_rotate_every) {
             current_ua = headers::random_ua();
@@ -132,16 +152,20 @@ pub async fn run(target: &str, path: Option<&str>, profile: &Profile) -> Result<
             }
         }
     }
+    header_pb.finish_with_message("Header bypass tests complete");
 
     // Step 3 — path encoding variants
-    println!("  {} Testing path encoding variants...", "·".dimmed());
+    let all_path_variants: Vec<String> = evasion::path_encoding_variants(&probe_path)
+        .into_iter()
+        .filter(|p| p != &probe_path)
+        .collect();
+    let path_pb = ProgressBar::new(all_path_variants.len() as u64);
+    path_pb.set_message("Testing path encoding variants...");
 
-    for encoded_path in evasion::path_encoding_variants(&probe_path) {
-        if encoded_path == probe_path {
-            continue; // skip baseline
-        }
+    for encoded_path in all_path_variants.iter() {
         evasion::delay(profile).await;
         request_count += 1;
+        path_pb.inc(1);
 
         let url = format!("{}{}", target.trim_end_matches('/'), encoded_path);
         if should_rotate_ua(request_count, profile.ua_rotate_every) {
@@ -195,6 +219,7 @@ pub async fn run(target: &str, path: Option<&str>, profile: &Profile) -> Result<
             }
         }
     }
+    path_pb.finish_with_message("Path encoding tests complete");
 
     let completed_at = Utc::now();
 
@@ -232,14 +257,23 @@ fn build_curl(url: &str, ua: &str, extra_headers: &[(String, String)]) -> String
     parts.join(" \\\n  ")
 }
 
-fn normalize_path(path: &str) -> String {
+fn normalize_path(path: &str) -> Result<String> {
     let trimmed = path.trim();
     if trimmed.is_empty() || trimmed == "/" {
-        "/".to_string()
-    } else if trimmed.starts_with('/') {
-        trimmed.to_string()
+        return Ok("/".to_string());
+    }
+
+    // Check for path traversal attempts
+    if trimmed.contains("..") {
+        return Err(anyhow!(
+            "Path contains invalid sequence '..'. Path traversal is not allowed."
+        ));
+    }
+
+    if trimmed.starts_with('/') {
+        Ok(trimmed.to_string())
     } else {
-        format!("/{}", trimmed)
+        Ok(format!("/{}", trimmed))
     }
 }
 
@@ -250,11 +284,12 @@ fn is_bypass_success(baseline_status: Option<u16>, variant_status: u16) -> bool 
     }
 }
 
+#[allow(clippy::manual_is_multiple_of)]
 fn should_rotate_ua(request_count: usize, rotate_every: usize) -> bool {
     if rotate_every <= 1 {
         return true;
     }
-    request_count.is_multiple_of(rotate_every)
+    request_count % rotate_every == 0
 }
 
 #[cfg(test)]
@@ -266,10 +301,16 @@ mod tests {
 
     #[test]
     fn normalize_path_handles_missing_slash() {
-        assert_eq!(normalize_path("admin"), "/admin");
-        assert_eq!(normalize_path("/admin"), "/admin");
-        assert_eq!(normalize_path(" /admin "), "/admin");
-        assert_eq!(normalize_path(""), "/");
+        assert_eq!(normalize_path("admin").unwrap(), "/admin");
+        assert_eq!(normalize_path("/admin").unwrap(), "/admin");
+        assert_eq!(normalize_path(" /admin ").unwrap(), "/admin");
+        assert_eq!(normalize_path("").unwrap(), "/");
+    }
+
+    #[test]
+    fn normalize_path_rejects_path_traversal() {
+        let err = normalize_path("../etc/passwd").expect_err("expected path traversal error");
+        assert!(err.to_string().contains(".."));
     }
 
     #[test]

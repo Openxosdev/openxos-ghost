@@ -1,10 +1,24 @@
 [package]
 name = "openxos-ghost"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 description = "Low-noise, evasion-aware security probe for authorized testing"
 license = "MIT"
 authors = ["Openxos <github.com/Openxosdev>"]
+repository = "https://github.com/Openxosdev/openxos-ghost"
+homepage = "https://github.com/Openxosdev/openxos-ghost"
+documentation = "https://github.com/Openxosdev/openxos-ghost#readme"
+keywords = ["security", "waf", "evasion", "cli", "pentest"]
+categories = ["command-line-utilities", "network-programming"]
+readme = "README.md"
+rust-version = "1.87"
+exclude = ["/.github", "/.clippy.toml", "/.rustfmt.toml"]
+
+[package.metadata.release]
+no-dev-version = true
+pre-release-replacements = [
+  {file="README.md", search="\\[version\\](.*?)\\]", replace="v${version}"},
+]
 
 [[bin]]
 name = "ghost"
@@ -15,6 +29,7 @@ tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 reqwest = { version = "0.12", features = ["rustls-tls", "gzip"], default-features = false }
 anyhow = "1"
 thiserror = "1"
@@ -22,6 +37,7 @@ rand = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 colored = "2"
 indicatif = "0.17"
+url = "2"
 
 [profile.release]
 opt-level = 3
@@ -29,3 +45,9 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[profile.bench]
+debug = true
+
+[profile.dev]
+split-debuginfo = "packed"

@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
@@ -92,17 +94,52 @@ impl Profile {
 }
 
 pub fn load(name: &str) -> Result<Profile> {
+    // Check if name is a file path first
+    if Path::new(name).exists() {
+        return load_from_file(name);
+    }
+
     let profile = match name {
         "slow" => Profile::slow(),
         "medium" => Profile::medium(),
         "aggressive" => Profile::aggressive(),
         other => Err(anyhow!(
-            "Unknown profile '{}'. Use: slow | medium | aggressive",
+            "Unknown profile '{}'. Use: slow | medium | aggressive, or a path to a YAML file",
             other
         ))?,
     };
 
     profile.validate()?;
+    Ok(profile)
+}
+
+/// Load a custom profile from a YAML file
+pub fn load_from_file(path: &str) -> Result<Profile> {
+    let content = fs::read_to_string(path)
+        .map_err(|e| anyhow!("Failed to read profile file '{}': {}", path, e))?;
+
+    let profile: Profile = serde_yaml::from_str(&content)
+        .map_err(|e| anyhow!("Failed to parse profile YAML in '{}': {}", path, e))?;
+
+    profile.validate()?;
+
+    // If no name provided, use filename
+    if profile.name.is_empty() {
+        let filename = Path::new(path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("custom");
+        return Ok(Profile {
+            name: filename.to_string(),
+            delay_min_ms: profile.delay_min_ms,
+            delay_max_ms: profile.delay_max_ms,
+            concurrency: profile.concurrency,
+            ua_rotate_every: profile.ua_rotate_every,
+            jitter: profile.jitter,
+            timeout_ms: profile.timeout_ms,
+        });
+    }
+
     Ok(profile)
 }
 
@@ -153,5 +190,22 @@ mod tests {
         p.timeout_ms = 0;
         let err = p.validate().expect_err("expected invalid timeout_ms");
         assert!(err.to_string().contains("timeout_ms"));
+    }
+
+    #[test]
+    fn yaml_profile_loading_works() {
+        let yaml = r#"
+name: test-yaml
+delay_min_ms: 100
+delay_max_ms: 500
+concurrency: 2
+ua_rotate_every: 3
+jitter: 0.5
+timeout_ms: 5000
+"#;
+        let profile = serde_yaml::from_str::<Profile>(yaml).expect("should parse YAML");
+        assert_eq!(profile.name, "test-yaml");
+        assert_eq!(profile.delay_min_ms, 100);
+        assert_eq!(profile.delay_max_ms, 500);
     }
 }
