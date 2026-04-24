@@ -16,6 +16,8 @@ fn configure_terminal() {
 
 // No-op on Unix-like systems (Linux, macOS, Termux)
 // Windows configuration handled separately via set_override
+#[cfg(not(target_os = "windows"))]
+fn configure_terminal() {}
 
 #[derive(Parser)]
 #[command(
